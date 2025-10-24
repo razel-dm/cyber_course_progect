@@ -1,15 +1,4 @@
-Malware - 
-
-Group Name - rz
-
-Group Members
-
-Raziel maymon 
-
-
-Project Description
-    this poject is c2 (comand and controle )
-
+# C2 (Command and Control) Project
 
 A command and control framework demonstrating secure client-server communications.
 
@@ -31,15 +20,16 @@ This project implements a secure C2 (Command and Control) framework with the fol
 - **Safe Demo Commands**:
     - echo - Safe message echo
     - screenshot - Screenshot capture (Base64 encoded)
-    - rickroll 
+    - rickroll - Educational demo
     - exit - Graceful shutdown
+- **Safety-First Design**: Minimal attack surface, controlled execution
 
 ## Components
 
 - server.py - C2 server implementation
 - agent.py - Remote agent
 - take_screenshot.py - Screenshot utility
-- get_rick_roll.py - 
+- get_rick_roll.py - Demo helper
 - command_executor.py - Safe subprocess wrapper
 
 ## Authors
