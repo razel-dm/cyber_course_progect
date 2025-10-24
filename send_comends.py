@@ -1,4 +1,5 @@
 
+
 from __future__ import annotations
 from dataclasses import dataclass, asdict
 from typing import Iterable, List, Optional, Union
@@ -7,7 +8,6 @@ import shlex
 import os
 
 CommandType = Union[str, Iterable[str]]
-
 
 @dataclass
 class CommandResult:
@@ -23,7 +23,6 @@ class CommandResult:
     def to_dict(self) -> dict:
         return asdict(self)
 
-
 class CommandExecutor:
 
     def __init__(self, cwd: Optional[str] = None, env: Optional[dict] = None, use_shell: bool = False):
@@ -32,8 +31,12 @@ class CommandExecutor:
         self.use_shell = use_shell
 
     def _prepare(self, command: CommandType) -> Union[str, List[str]]:
+        if self.use_shell:
+            if isinstance(command, (list, tuple)):
+                raise ValueError("use_shell=True requires a single string command.")
+            return command  
         if isinstance(command, str):
-            return command if self.use_shell else shlex.split(command, posix=(os.name != "nt"))
+            return shlex.split(command, posix=(os.name != "nt"))
         return list(command)
 
     def run(
@@ -45,6 +48,12 @@ class CommandExecutor:
         input_data: Optional[Union[str, bytes]] = None,
     ) -> CommandResult:
         prepared = self._prepare(command)
+
+        if input_data is not None and text and isinstance(input_data, (bytes, bytearray)):
+            input_data = input_data.decode()
+        if input_data is not None and not text and isinstance(input_data, str):
+            input_data = input_data.encode()
+
         try:
             cp = subprocess.run(
                 prepared,
@@ -63,13 +72,13 @@ class CommandExecutor:
                 stderr=cp.stderr if capture_output else None,
             )
         except subprocess.TimeoutExpired as e:
-            return CommandResult(
-                command=prepared,
-                returncode=e.returncode if e.returncode is not None else -1,
-                stdout=(e.stdout.decode() if isinstance(e.stdout, (bytes, bytearray)) else e.stdout),
-                stderr=(e.stderr.decode() if isinstance(
-                    e.stderr, (bytes, bytearray)) else e.stderr) or "TimeoutExpired",
-            )
+            stdout = None
+            stderr = None
+            if hasattr(e, "stdout") and e.stdout is not None:
+                stdout = e.stdout.decode() if isinstance(e.stdout, (bytes, bytearray)) else e.stdout
+            if hasattr(e, "stderr") and e.stderr is not None:
+                stderr = e.stderr.decode() if isinstance(e.stderr, (bytes, bytearray)) else e.stderr
+            return CommandResult(command=prepared, returncode=-1, stdout=stdout, stderr=(stderr or "TimeoutExpired"))
         except FileNotFoundError as e:
             return CommandResult(command=prepared, returncode=-1, stdout="", stderr=str(e))
         except Exception as e:

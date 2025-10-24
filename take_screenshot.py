@@ -1,25 +1,28 @@
+
 import io
 import subprocess
 import sys
-import pyautogui
-
 
 def ensure_pyautogui():
     try:
         import pyautogui
-    except ImportError:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "pyautogui"])
-        import pyautogui
+    except Exception:
+        
+        try:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "pyautogui"])
+            import pyautogui  
+        except Exception:
+            raise
     return pyautogui
 
-def take_screenshot(filename):
+def take_screenshot_bytes():
     pyautogui = ensure_pyautogui()
     screenshot = pyautogui.screenshot()
-    screenshot.save(filename)
+    buf = io.BytesIO()
+    screenshot.save(buf, format="PNG")
+    return buf.getvalue()
+
 class ScreenshotTaker:
-    def take_screenshot(self):
-    
-        screenshot = pyautogui.screenshot()
-        screenshot_data = io.BytesIO()
-        screenshot.save(screenshot_data, format='PNG')
-        return screenshot_data.getvalue()
+    def take_screenshot(self) -> bytes:
+        """Return PNG image bytes."""
+        return take_screenshot_bytes()
